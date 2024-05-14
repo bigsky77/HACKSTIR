@@ -3,7 +3,11 @@
 package main
 
 import (
+	"hash"
+
+	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr"
+	"github.com/consensys/gnark-crypto/ecc/bn254/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/iop"
 )
 
@@ -12,6 +16,9 @@ type instance struct {
 
 	// Polynomial
 	p *iop.Polynomial
+
+	// Domain
+	domain0 *fft.Domain
 
 	// Protocl parameters
 	securityLevel         uint64
@@ -24,33 +31,48 @@ type instance struct {
 	friFoldingFactor      uint64
 
 	// Merkle tree parameters
+	h hash.Hash
 
 	// FiatShamir parameters
+}
+
+// represents a Witness
+type Witness struct {
+	tree merkletree.Tree
+}
+
+// represents a Commitment
+type Commitment struct {
+}
+
+// represents a Proof
+type Proof struct {
 }
 
 func main() {
 	println("=========================================")
 	println("STIR")
 
+	// degree
 	n := 24
 	p := buildRandomPolynomial(n)
-	instance := newInstance(n, p)
+	prover := newInstance(n, p)
 
 	// commit()
-	witness := commit(p)
+	witness, commitment := prover.commit(p)
 
 	// prover()
-	instance.prover(witness)
+	proof := prover.prove(witness)
 
 	// verifier()
-	verifier()
+	verifier(commitment, proof)
 
 	println("=========================================")
 }
 
 func newInstance(n int, p *iop.Polynomial) *instance {
 
-	return &instance{
+	s := instance{
 		p:                     p,
 		securityLevel:         128,
 		protocolSecurityLevel: 128,
@@ -61,26 +83,38 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 		stirFoldingFactor:     16,
 		friFoldingFactor:      8,
 	}
+
+	s.domain0 = fft.NewDomain(uint64(p.Size()))
+
+	return &s
 }
 
-func commit(p *iop.Polynomial) *iop.Polynomial {
+func (s *instance) commit(p *iop.Polynomial) (Witness, Commitment) {
 	println("Commit")
 
-	//n := uint64(p.Size())
+	// Merkle tree
+	tree := merkletree.New(s.h)
 
-	// domain
-	//domain := fft.NewDomain(n)
+	//
+	w := Witness{
+		tree: *tree,
+	}
 
-	// evaluate over domain
+	c := Commitment{}
+
+	return w, c
+
+}
+
+func (s *instance) prove(witness Witness) Proof {
+	println("Prover")
+
+	p := Proof{}
 
 	return p
 }
 
-func (s *instance) prover(witness *iop.Polynomial) {
-	println("Prover")
-}
-
-func verifier() {
+func verifier(c Commitment, p Proof) {
 	println("Verifier")
 }
 
