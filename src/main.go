@@ -4,12 +4,17 @@ package main
 
 import (
 	"hash"
+	"math/bits"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/iop"
 )
+
+// CHECK Correctness
+const rho = 8
 
 // represents a Prover instance
 type instance struct {
@@ -18,7 +23,10 @@ type instance struct {
 	p *iop.Polynomial
 
 	// Domain
-	domain0 *fft.Domain
+	domain *fft.Domain
+
+	// nbSteps
+	nbSteps int
 
 	// Protocl parameters
 	securityLevel         uint64
@@ -84,13 +92,35 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 		friFoldingFactor:      8,
 	}
 
-	s.domain0 = fft.NewDomain(uint64(p.Size()))
+	// build Domain
+	size := p.Size()
+	np := ecc.NextPowerOfTwo(uint64(size))
+
+	// extending the domain
+	np = np * rho
+
+	s.domain = fft.NewDomain(np)
+
+	//steps
+	s.nbSteps = bits.TrailingZeros(uint(n))
 
 	return &s
 }
 
 func (s *instance) commit(p *iop.Polynomial) (Witness, Commitment) {
 	println("Commit")
+
+	// evaluate p
+	// evaluate p and sort the result
+	coef := p.Coefficients()
+
+	_p := make([]fr.Element, s.domain.Cardinality)
+	copy(_p, coef)
+	s.domain.FFT(_p, fft.DIF)
+	fft.BitReverse(_p)
+
+	// stack evaluations
+	stackEvaluations(_p, int(s.stirFoldingFactor))
 
 	// Merkle tree
 	tree := merkletree.New(s.h)
@@ -133,4 +163,23 @@ func buildRandomPolynomial(n int) *iop.Polynomial {
 	res := iop.NewPolynomial(&a, iop.Form{
 		Basis: iop.Canonical, Layout: iop.Regular})
 	return res
+}
+
+func stackEvaluations(evals []fr.Element, foldingFactor int) [][]fr.Element {
+	if len(evals)%foldingFactor != 0 {
+		panic("Evaluations length must be divisible by folding factor")
+	}
+
+	sizeOfNewDomain := len(evals) / foldingFactor
+	stackedEvaluations := make([][]fr.Element, sizeOfNewDomain)
+
+	for i := 0; i < sizeOfNewDomain; i++ {
+		newEvals := make([]fr.Element, foldingFactor)
+		for j := 0; j < foldingFactor; j++ {
+			newEvals[j] = evals[i+j*sizeOfNewDomain]
+		}
+		stackedEvaluations[i] = newEvals
+	}
+
+	return stackedEvaluations
 }
