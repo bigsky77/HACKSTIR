@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"hash"
-	"math/bits"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark-crypto/ecc"
@@ -61,6 +60,8 @@ type instance struct {
 	h hash.Hash
 
 	// FiatShamir parameters
+	fs  *fiatshamir.Transcript
+	xis []string
 }
 
 // represents a Witness
@@ -96,7 +97,7 @@ func main() {
 	println("STIR")
 
 	// degree
-	n := 24
+	n := 32
 	p := buildRandomPolynomial(n)
 	prover := newInstance(n, p)
 
@@ -141,7 +142,9 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 	s.domain = fft.NewDomain(np)
 
 	//steps
-	s.nbSteps = bits.TrailingZeros(uint(n))
+	//s.nbSteps = bits.TrailingZeros(uint(n))
+	// TODO calculate number of steps
+	s.nbSteps = 3
 
 	// hash
 	s.h = sha256.New()
@@ -198,6 +201,7 @@ func (s *instance) prove(witness Witness) Proof {
 	}
 	xis[s.nbSteps] = paddNaming("s0", fr.Bytes)
 	fs := fiatshamir.NewTranscript(s.h, xis...)
+	s.fs = fs
 
 	var salt fr.Element
 	fs.Bind(xis[0], salt.Marshal())
@@ -206,6 +210,7 @@ func (s *instance) prove(witness Witness) Proof {
 	bxi, _ := fs.ComputeChallenge(xis[0])
 	var xi fr.Element
 	xi.SetBytes(bxi)
+	s.xis = xis
 
 	WitnessExtended := WitnessExtended{
 		domain:            witness.domain,
@@ -215,10 +220,9 @@ func (s *instance) prove(witness Witness) Proof {
 		numRounds:         0,
 		foldingRandomness: xi,
 	}
-
 	// TODO pass fiatshamir
 	for i := 0; i < s.nbSteps; i++ {
-		s.round(WitnessExtended)
+		s.round(WitnessExtended, i)
 	}
 
 	p := Proof{}
@@ -226,7 +230,8 @@ func (s *instance) prove(witness Witness) Proof {
 	return p
 }
 
-func (s *instance) round(witness WitnessExtended) {
+func (s *instance) round(witness WitnessExtended, i int) {
+	fmt.Println("Round", i)
 
 	// fold poly
 	var gInv fr.Element
@@ -234,19 +239,31 @@ func (s *instance) round(witness WitnessExtended) {
 
 	// TODO confirm that this is the correct way to fold
 	_p := witness.p.Coefficients()
+	// this is incorrect need to figure out correct way to fold
 	_p = foldPolynomialLagrangeBasis(_p, gInv, witness.foldingRandomness)
 
-	// shift domian by scale offset
+	// scale offset domain
+	g := scaleWithOffset(*s.domain, 2)
 
 	// evaluate poly
+	g.FFT(_p, fft.DIF)
 
 	// stack evaluations
+	foldedEvals := stackEvaluations(_p, int(s.stirFoldingFactor))
 
 	// Merkle tree
+	t := merkletree.New(s.h)
 
-	// get root
+	for i := 0; i < len(foldedEvals); i++ {
+		for k := 0; k < int(s.stirFoldingFactor); k++ {
+			t.Push(foldedEvals[i][k].Marshal())
+		}
+	}
+
+	//r := t.Root()
 
 	// OOD randomness
+	// TODO impl fiatshamir
 
 	// Sample the indexes of L^k
 
@@ -266,25 +283,20 @@ func verifier(c Commitment, p Proof) {
 ////////////////////////////////////////
 //////////////////////////////////////// UTILS
 
-// return a random polynomial of degree n, if n==-1 cancel the blinding
-func buildRandomPolynomial(n int) *iop.Polynomial {
-	var a []fr.Element
-	if n == -1 {
-		a := make([]fr.Element, 1)
-		a[0].SetZero()
-	} else {
-		a = make([]fr.Element, n+1)
-		for i := 0; i <= n; i++ {
-			a[i].SetRandom()
-		}
-	}
-	res := iop.NewPolynomial(&a, iop.Form{
-		Basis: iop.Canonical, Layout: iop.Regular})
-	return res
+// Take a domain L_0 = o * <w> and compute a new domain L_1 = w * o^power * <w^power>.
+// TODO verify correctness
+func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
+	size := domain.Cardinality
+	newSize := int(size) / pow
+	//fmt.Println("size", newSize)
+
+	d := fft.NewDomain(uint64(newSize))
+	return d
 }
 
 func stackEvaluations(evals []fr.Element, foldingFactor int) [][]fr.Element {
 	if len(evals)%foldingFactor != 0 {
+		fmt.Println("evals", len(evals), "folding factor", foldingFactor)
 		panic("Evaluations length must be divisible by folding factor")
 	}
 
@@ -300,6 +312,23 @@ func stackEvaluations(evals []fr.Element, foldingFactor int) [][]fr.Element {
 	}
 
 	return stackedEvaluations
+}
+
+// return a random polynomial of degree n, if n==-1 cancel the blinding
+func buildRandomPolynomial(n int) *iop.Polynomial {
+	var a []fr.Element
+	if n == -1 {
+		a := make([]fr.Element, 1)
+		a[0].SetZero()
+	} else {
+		a = make([]fr.Element, n+1)
+		for i := 0; i <= n; i++ {
+			a[i].SetRandom()
+		}
+	}
+	res := iop.NewPolynomial(&a, iop.Form{
+		Basis: iop.Canonical, Layout: iop.Regular})
+	return res
 }
 
 // sort orders the evaluation of a polynomial on a domain
