@@ -3,6 +3,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"hash"
 	"math/bits"
 
@@ -46,11 +47,15 @@ type instance struct {
 
 // represents a Witness
 type Witness struct {
-	tree merkletree.Tree
+	domain fft.Domain
+	p      *iop.Polynomial
+	tree   merkletree.Tree
+	evals  [][]fr.Element
 }
 
 // represents a Commitment
 type Commitment struct {
+	root []byte
 }
 
 // represents a Proof
@@ -104,6 +109,9 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 	//steps
 	s.nbSteps = bits.TrailingZeros(uint(n))
 
+	// hash
+	s.h = sha256.New()
+
 	return &s
 }
 
@@ -120,17 +128,30 @@ func (s *instance) commit(p *iop.Polynomial) (Witness, Commitment) {
 	fft.BitReverse(_p)
 
 	// stack evaluations
-	stackEvaluations(_p, int(s.stirFoldingFactor))
+	foldedEvals := stackEvaluations(_p, int(s.stirFoldingFactor))
 
 	// Merkle tree
-	tree := merkletree.New(s.h)
+	t := merkletree.New(s.h)
 
-	//
-	w := Witness{
-		tree: *tree,
+	for i := 0; i < len(foldedEvals); i++ {
+		for k := 0; k < int(s.stirFoldingFactor); k++ {
+			t.Push(foldedEvals[i][k].Marshal())
+		}
 	}
 
-	c := Commitment{}
+	rh := t.Root()
+
+	// Build Witness
+	w := Witness{
+		domain: *s.domain,
+		p:      p,
+		tree:   *t,
+		evals:  foldedEvals,
+	}
+
+	c := Commitment{
+		root: rh,
+	}
 
 	return w, c
 
@@ -182,4 +203,17 @@ func stackEvaluations(evals []fr.Element, foldingFactor int) [][]fr.Element {
 	}
 
 	return stackedEvaluations
+}
+
+// sort orders the evaluation of a polynomial on a domain
+// such that contiguous entries are in the same fiber:
+// {q(g⁰), q(g^{n/2}), q(g¹), q(g^{1+n/2}),...,q(g^{n/2-1}), q(gⁿ⁻¹)}
+func sort(evaluations []fr.Element) []fr.Element {
+	q := make([]fr.Element, len(evaluations))
+	n := len(evaluations) / 2
+	for i := 0; i < n; i++ {
+		q[2*i].Set(&evaluations[i])
+		q[2*i+1].Set(&evaluations[i+n])
+	}
+	return q
 }
