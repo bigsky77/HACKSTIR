@@ -21,6 +21,19 @@ import (
 // CHECK Correctness
 const rho = 8
 
+// 2^{-1}, used several times
+var twoInv fr.Element
+
+// GetRho returns the factor ρ = size_code_word/size_polynomial
+func GetRho() int {
+	return rho
+}
+
+// TODO figure out where to call this
+func init() {
+	twoInv.SetUint64(2).Inverse(&twoInv)
+}
+
 // represents a Prover instance
 type instance struct {
 
@@ -203,8 +216,9 @@ func (s *instance) prove(witness Witness) Proof {
 		foldingRandomness: xi,
 	}
 
+	// TODO pass fiatshamir
 	for i := 0; i < s.nbSteps; i++ {
-		round(WitnessExtended)
+		s.round(WitnessExtended)
 	}
 
 	p := Proof{}
@@ -212,9 +226,15 @@ func (s *instance) prove(witness Witness) Proof {
 	return p
 }
 
-func round(witness WitnessExtended) {
+func (s *instance) round(witness WitnessExtended) {
 
 	// fold poly
+	var gInv fr.Element
+	gInv.Set(&s.domain.GeneratorInv)
+
+	// TODO confirm that this is the correct way to fold
+	_p := witness.p.Coefficients()
+	_p = foldPolynomialLagrangeBasis(_p, gInv, witness.foldingRandomness)
 
 	// shift domian by scale offset
 
@@ -242,6 +262,9 @@ func round(witness WitnessExtended) {
 
 func verifier(c Commitment, p Proof) {
 }
+
+////////////////////////////////////////
+//////////////////////////////////////// UTILS
 
 // return a random polynomial of degree n, if n==-1 cancel the blinding
 func buildRandomPolynomial(n int) *iop.Polynomial {
@@ -302,4 +325,39 @@ func paddNaming(s string, size int) string {
 	b := []byte(s)
 	copy(a, b)
 	return string(a)
+}
+
+// foldPolynomialLagrangeBasis folds a polynomial p, expressed in Lagrange basis.
+//
+// Fᵣ[X]/(Xⁿ-1) is a free module of rank 2 on Fᵣ[Y]/(Y^{n/2}-1). If
+// p∈ Fᵣ[X]/(Xⁿ-1), expressed in Lagrange basis, the function finds the coordinates
+// p₁, p₂ of p in Fᵣ[Y]/(Y^{n/2}-1), expressed in Lagrange basis. Finally, it computes
+// p₁ + x*p₂ and returns it.
+//
+// * p is the polynomial to fold, in Lagrange basis, sorted like this: p = [p(1),p(-1),p(g),p(-g),p(g²),p(-g²),...]
+// * g is a generator of the subgroup of Fᵣ^{*} of size len(p)
+// * x is the folding challenge x, used to return p₁+x*p₂
+func foldPolynomialLagrangeBasis(pSorted []fr.Element, gInv, x fr.Element) []fr.Element {
+
+	// we have the following system
+	// p₁(g²ⁱ)+gⁱp₂(g²ⁱ) = p(gⁱ)
+	// p₁(g²ⁱ)-gⁱp₂(g²ⁱ) = p(-gⁱ)
+	// we solve the system for p₁(g²ⁱ),p₂(g²ⁱ)
+	s := len(pSorted)
+	res := make([]fr.Element, s/2)
+
+	var p1, p2, acc fr.Element
+	acc.SetOne()
+
+	for i := 0; i < s/2; i++ {
+
+		p1.Add(&pSorted[2*i], &pSorted[2*i+1])
+		p2.Sub(&pSorted[2*i], &pSorted[2*i+1]).Mul(&p2, &acc)
+		res[i].Mul(&p2, &x).Add(&res[i], &p1).Mul(&res[i], &twoInv)
+
+		acc.Mul(&acc, &gInv)
+
+	}
+
+	return res
 }
