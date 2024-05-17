@@ -90,6 +90,20 @@ type Commitment struct {
 
 // represents a Proof
 type Proof struct {
+	RoundProofs    []RoundProof
+	queriesToFinal []fr.Element
+	finalPoly      iop.Polynomial
+	powNonce       int
+}
+
+// represents a Round Proof
+type RoundProof struct {
+	gRoot         []byte
+	betas         []fr.Element
+	ansPoly       iop.Polynomial
+	queriesToPrev []fr.Element
+	shakePoly     iop.Polynomial
+	powNonce      int
 }
 
 func main() {
@@ -221,8 +235,11 @@ func (s *instance) prove(witness Witness) Proof {
 		foldingRandomness: xi,
 	}
 	// TODO pass fiatshamir
+	roundProofs := make([]RoundProof, s.nbSteps)
 	for i := 0; i < s.nbSteps; i++ {
-		s.round(WitnessExtended, i)
+		newWitness, roundProof := s.round(WitnessExtended, i)
+		roundProofs[i] = roundProof
+		WitnessExtended = newWitness
 	}
 
 	p := Proof{}
@@ -230,7 +247,7 @@ func (s *instance) prove(witness Witness) Proof {
 	return p
 }
 
-func (s *instance) round(witness WitnessExtended, i int) {
+func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, RoundProof) {
 	fmt.Println("Round", i)
 
 	// fold poly
@@ -274,6 +291,8 @@ func (s *instance) round(witness WitnessExtended, i int) {
 	// Then compute the set we are quotienting by
 
 	// Build the quotient polynomial
+
+	return witness, RoundProof{}
 
 }
 
