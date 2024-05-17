@@ -12,6 +12,8 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/iop"
+
+	"github.com/consensys/gnark/logger"
 )
 
 // CHECK Correctness
@@ -71,13 +73,18 @@ func main() {
 	p := buildRandomPolynomial(n)
 	prover := newInstance(n, p)
 
+	log := logger.Logger().With().Str("position", "start").Logger()
+	log.Info().Msg("Commit")
+
 	// commit()
 	witness, commitment := prover.commit(p)
 
 	// prover()
+	log.Info().Msg("Prove")
 	proof := prover.prove(witness)
 
 	// verifier()
+	log.Info().Msg("Verify")
 	verifier(commitment, proof)
 
 	println("=========================================")
@@ -116,8 +123,6 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 }
 
 func (s *instance) commit(p *iop.Polynomial) (Witness, Commitment) {
-	println("Commit")
-
 	// evaluate p
 	// evaluate p and sort the result
 	coef := p.Coefficients()
@@ -158,7 +163,6 @@ func (s *instance) commit(p *iop.Polynomial) (Witness, Commitment) {
 }
 
 func (s *instance) prove(witness Witness) Proof {
-	println("Prover")
 
 	p := Proof{}
 
@@ -166,7 +170,6 @@ func (s *instance) prove(witness Witness) Proof {
 }
 
 func verifier(c Commitment, p Proof) {
-	println("Verifier")
 }
 
 // return a random polynomial of degree n, if n==-1 cancel the blinding
