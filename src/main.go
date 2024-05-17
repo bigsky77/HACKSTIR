@@ -4,6 +4,7 @@ package main
 
 import (
 	"crypto/sha256"
+	"fmt"
 	"hash"
 	"math/bits"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/iop"
+	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
 
 	"github.com/consensys/gnark/logger"
 )
@@ -29,6 +31,7 @@ type instance struct {
 	domain *fft.Domain
 
 	// nbSteps
+	// TODO check that is corresponds to number of rounds
 	nbSteps int
 
 	// Protocl parameters
@@ -53,6 +56,17 @@ type Witness struct {
 	p      *iop.Polynomial
 	tree   merkletree.Tree
 	evals  [][]fr.Element
+}
+
+// represents a Witness
+type WitnessExtended struct {
+	domain    fft.Domain
+	p         *iop.Polynomial
+	tree      merkletree.Tree
+	evals     [][]fr.Element
+	numRounds int
+	// TODO confirm that it is a field element
+	foldingRandomness fr.Element
 }
 
 // represents a Commitment
@@ -164,9 +178,66 @@ func (s *instance) commit(p *iop.Polynomial) (Witness, Commitment) {
 
 func (s *instance) prove(witness Witness) Proof {
 
+	// TODO use Fiat Shamir for random fr.element
+	xis := make([]string, s.nbSteps+1)
+	for i := 0; i < s.nbSteps; i++ {
+		xis[i] = paddNaming(fmt.Sprintf("x%d", i), fr.Bytes)
+	}
+	xis[s.nbSteps] = paddNaming("s0", fr.Bytes)
+	fs := fiatshamir.NewTranscript(s.h, xis...)
+
+	var salt fr.Element
+	fs.Bind(xis[0], salt.Marshal())
+
+	// derive the challenge
+	bxi, _ := fs.ComputeChallenge(xis[0])
+	var xi fr.Element
+	xi.SetBytes(bxi)
+
+	WitnessExtended := WitnessExtended{
+		domain:            witness.domain,
+		p:                 witness.p,
+		tree:              witness.tree,
+		evals:             witness.evals,
+		numRounds:         0,
+		foldingRandomness: xi,
+	}
+
+	for i := 0; i < s.nbSteps; i++ {
+		round(WitnessExtended)
+	}
+
 	p := Proof{}
 
 	return p
+}
+
+func round(witness WitnessExtended) {
+
+	// fold poly
+
+	// shift domian by scale offset
+
+	// evaluate poly
+
+	// stack evaluations
+
+	// Merkle tree
+
+	// get root
+
+	// OOD randomness
+
+	// Sample the indexes of L^k
+
+	// Verifier quires
+
+	// Update the witness
+
+	// Then compute the set we are quotienting by
+
+	// Build the quotient polynomial
+
 }
 
 func verifier(c Commitment, p Proof) {
@@ -219,4 +290,16 @@ func sort(evaluations []fr.Element) []fr.Element {
 		q[2*i+1].Set(&evaluations[i+n])
 	}
 	return q
+}
+
+// paddNaming takes s = 0xA1.... and turns
+// it into s' = 0xA1.. || 0..0 of size frSize bytes.
+// Using this, when writing the domain separator in FiatShamir, it takes
+// the same size as a snark variable (=number of byte in the block of a snark compliant
+// hash function like mimc), so it is compliant with snark circuit.
+func paddNaming(s string, size int) string {
+	a := make([]byte, size)
+	b := []byte(s)
+	copy(a, b)
+	return string(a)
 }
