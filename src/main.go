@@ -13,8 +13,6 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/iop"
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
-
-	"github.com/consensys/gnark/logger"
 )
 
 // CHECK Correctness
@@ -110,24 +108,27 @@ type RoundProof struct {
 func main() {
 	println("=========================================")
 	println("STIR")
-
 	// degree
 	n := 32
 	p := buildRandomPolynomial(n)
 	prover := newInstance(n, p)
 
-	log := logger.Logger()
-	log.Info().Msg("Commit")
+	fmt.Printf("Targeting %d-bits of security - protocol running at %d-bits - soundness: Conjecture\n", prover.securityLevel, prover.protocolSecurityLevel)
+	fmt.Printf("Starting degree: 2^%d, stopping_degree: 2^%d\n", prover.initialDegree, prover.finalDegree)
+	fmt.Printf("Starting rate: 2^-%d, folding_factor: %d\n", prover.rate, prover.stirFoldingFactor)
+	fmt.Printf("Number of rounds: %d. OOD samples: %d\n", prover.nbSteps, prover.oodSamples)
+	fmt.Println("")
 
 	// commit()
+	fmt.Println("Commit")
 	witness, commitment := prover.commit(p)
 
 	// prover()
-	log.Info().Msg("Prove")
+	fmt.Println("Prove")
 	proof := prover.prove(witness)
 
 	// verifier()
-	log.Info().Msg("Verify")
+	fmt.Println("Verify")
 	verifier(commitment, proof)
 
 	println("=========================================")
@@ -250,7 +251,6 @@ func (s *instance) prove(witness Witness) Proof {
 }
 
 func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, RoundProof) {
-	fmt.Println("Round", i)
 
 	// fold poly
 	var gInv fr.Element
