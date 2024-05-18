@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"math"
+	"math/rand"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark-crypto/ecc"
@@ -341,6 +342,7 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	// TODO check if we can pick random elements instead of using sponge
 
 	// Proximity generator
+	// TODO not safe because random numbers are not from fiatshamir
 	var combRandomness fr.Element
 	combRandomness.SetRandom()
 
@@ -357,6 +359,12 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	// );
 
 	scalingFactor := witness.domain.Cardinality / s.stirFoldingFactor
+	numRepetitions := s.repetitions[witness.numRounds]
+
+	stirRandomnessIndexes := make([]uint64, numRepetitions)
+	for i := uint64(0); i < numRepetitions; i++ {
+		stirRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
+	}
 
 
 	// Verifier quires
