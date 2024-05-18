@@ -290,6 +290,42 @@ func (s *instance) prove(witness Witness) Proof {
 		WitnessExtended = newWitness
 	}
 
+	var gInv fr.Element
+	gInv.Set(&s.domain.GeneratorInv)
+	poly := WitnessExtended.p.Coefficients()
+	finalPoly := foldPolynomialLagrangeBasis(poly, gInv, WitnessExtended.foldingRandomness)
+
+	finalRepetition := s.repetitions[s.numRounds]
+	scalingFactor := WitnessExtended.domain.Cardinality / s.stirFoldingFactor
+
+	finalRandomnessIndexes := make([]uint64, finalRepetition)
+	for i := uint64(0); i < finalRepetition; i++ {
+		finalRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
+	}
+
+	queriesToFinalAns := make([][]fr.Element, len(finalRandomnessIndexes))
+	for i, index := range finalRandomnessIndexes {
+		queriesToFinalAns[i] = WitnessExtended.evals[index]
+	}
+
+	queriesToFinalProof := make([]fri.OpeningProof, len(finalRandomnessIndexes))
+
+	var res fri.OpeningProof
+
+	for j := 0; j < len(finalRandomnessIndexes); j++ {
+		tree := merkletree.New(s.h)
+		tree.SetIndex(uint64(finalRandomnessIndexes[j]))
+
+		for i := 0; i < len(WitnessExtended.evals); i++ {
+			for k := 0; k < int(s.stirFoldingFactor); k++ {
+				tree.Push(WitnessExtended.evals[i][k].Marshal())
+			}
+		}
+		_, res.ProofSet, _, _ = tree.Prove()
+		queriesToFinalProof[j] = res
+	}
+	
+
 	p := Proof{}
 
 	return p
@@ -360,6 +396,7 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	scalingFactor := witness.domain.Cardinality / s.stirFoldingFactor
 	numRepetitions := s.repetitions[witness.numRounds]
 
+	// dedup
 	stirRandomnessIndexes := make([]uint64, numRepetitions)
 	for i := uint64(0); i < numRepetitions; i++ {
 		stirRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
