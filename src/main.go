@@ -334,12 +334,12 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	oodRandomness[0].SetRandom()
 	oodRandomness[1].SetRandom()
 
-	poly := iop.NewPolynomial(&_p, iop.Form{
+	foldedPoly := iop.NewPolynomial(&_p, iop.Form{
 		Basis: iop.Canonical, Layout: iop.Regular})
 	// evaluation of poly at the ood randomness
 	betas := make([]fr.Element, 2)
 	for i := 0; i < 2; i++ {
-		betas[i] = poly.Evaluate(oodRandomness[i])
+		betas[i] = foldedPoly.Evaluate(oodRandomness[i])
 	}
 
 	// TODO check if we can pick random elements instead of using sponge
@@ -383,6 +383,12 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	quotientSet := make([]fr.Element, 0, len(oodRandomness) + len(stirRandomness))
 	quotientSet = append(quotientSet, oodRandomness...)
 	quotientSet = append(quotientSet, stirRandomness...)
+
+	// Since we cannot store tupples like in rust we use a 2D array
+	quotientAnswers := make([][2]fr.Element, len(quotientSet))
+	for i, x := range quotientSet {
+		quotientAnswers[i] = [2]fr.Element{x, foldedPoly.Evaluate(x)}
+	}
 
 	// Verifier quires
 
