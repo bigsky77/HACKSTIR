@@ -98,7 +98,7 @@ type Commitment struct {
 // represents a Proof
 type Proof struct {
 	RoundProofs    []RoundProof
-	queriesToFinal []fr.Element
+	queriesToFinal []fri.OpeningProof
 	finalPoly      iop.Polynomial
 	powNonce       int
 }
@@ -312,13 +312,35 @@ func (s *instance) prove(witness Witness) Proof {
 		finalRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
 	}
 
-	var queries_to_final []fr.Element
+	queriesToFinalAns := make([][]fr.Element, len(finalRandomnessIndexes))
+	for i, index := range finalRandomnessIndexes {
+		queriesToFinalAns[i] = WitnessExtended.evals[index]
+	}
+
+	queriesToFinalProof := make([]fri.OpeningProof, len(finalRandomnessIndexes))
+
+	var res fri.OpeningProof
+
+	for j := 0; j < len(finalRandomnessIndexes); j++ {
+		tree := merkletree.New(s.h)
+		tree.SetIndex(uint64(finalRandomnessIndexes[j]))
+
+		for i := 0; i < len(WitnessExtended.evals); i++ {
+			for k := 0; k < int(s.stirFoldingFactor); k++ {
+				tree.Push(WitnessExtended.evals[i][k].Marshal())
+			}
+		}
+		_, res.ProofSet, _, _ = tree.Prove()
+		queriesToFinalProof[j] = res
+	}
+
+	//TODO
 
 	var pow_nonce int
 
 	p := Proof{
 		roundProofs,
-		queries_to_final,
+		queriesToFinalProof,
 		*finalPoly,
 		pow_nonce,
 	}
