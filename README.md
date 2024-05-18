@@ -16,5 +16,7 @@ go run src/main.go
 
 
 [X] Commit
-[] Prove
-[] Verify
+
+[ ] Prove
+
+[ ] Verify
