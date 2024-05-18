@@ -429,22 +429,22 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	}
 
 	// Here, we update the witness
-    // First, compute the set of points we are actually going to query at
+	// First, compute the set of points we are actually going to query at
 	var stirRandomness []fr.Element
-	for _, index := range(stirRandomnessIndexes) {
+	for _, index := range stirRandomnessIndexes {
 		scaledDomain := scale(witness.domain, int(s.stirFoldingFactor))
 		var element fr.Element
 		element = *element.Exp(scaledDomain.Generator, big.NewInt(int64(index)))
 		// TODO if the offset is not one (identity) we have to multiply the element by the coset offset
 		// This is probably incorrect idk
-		if !scaledDomain.FrMultiplicativeGen.IsOne(){
+		if !scaledDomain.FrMultiplicativeGen.IsOne() {
 			element.Mul(&element, &(scaledDomain.FrMultiplicativeGen))
 		}
 		stirRandomness = append(stirRandomness, element)
 	}
 
 	// Then compute the set we are quotienting by
-	quotientSet := make([]fr.Element, 0, len(oodRandomness) + len(stirRandomness))
+	quotientSet := make([]fr.Element, 0, len(oodRandomness)+len(stirRandomness))
 	quotientSet = append(quotientSet, oodRandomness...)
 	quotientSet = append(quotientSet, stirRandomness...)
 
@@ -477,6 +477,71 @@ func (s *instance) repetitionsFunc(logInvRate uint64) uint64 {
 ////////////////////////////////////////
 //////////////////////////////////////// UTILS
 
+// Computes a polynomial that interpolates the given points with the given answers
+func naiveInterpolation(points [][2]fr.Element) iop.Polynomial {
+	// Convert points to a slice of x values
+	var xValues []fr.Element
+	for _, point := range points {
+		xValues = append(xValues, point[0])
+	}
+
+	// Compute the vanishing polynomial
+	vanishingPoly := computeVanishingPoly(xValues)
+
+	cp := vanishingPoly.Coefficients()
+	vanishingAdjusted := make([]fr.Element, len(cp))
+	for _, point := range points {
+		a := point[0]
+		// Computes the vanishing (apart from x - a)
+		negA := fr.Element{}
+		negA.Neg(&a)
+
+		for i := 0; i < len(cp); i++ {
+			cp[i].Div(&cp[i], &negA)
+			vanishingAdjusted[i].Set(&cp[i])
+		}
+
+		tmp := vanishingPoly.Evaluate(a)
+
+		//  TODO fix scale factor
+		scaleFactor := tmp
+
+		for i := 0; i < len(cp); i++ {
+			vanishingAdjusted[i].Mul(&vanishingAdjusted[i], &scaleFactor)
+		}
+
+	}
+
+	// Initialize the answer polynomial (naive interpolation)
+	ansPolynomial := iop.NewPolynomial(&vanishingAdjusted, iop.Form{
+		Basis: iop.Canonical, Layout: iop.Regular})
+
+	return *ansPolynomial
+}
+
+// Computes a polynomial that vanishes on points
+func computeVanishingPoly(points []fr.Element) iop.Polynomial {
+	n := len(points)
+	cp := make([]fr.Element, n+1)
+	cp[0].SetOne()
+
+	for _, i := range points {
+
+		for j := n; j > 0; j-- {
+			var tmp fr.Element
+			tmp.Mul(&i, &cp[j-1])
+			cp[j].Sub(&cp[j], &i)
+		}
+
+		cp[0].Neg(&cp[0])
+		cp[0].Mul(&cp[0], &i)
+	}
+	vanishingPoly := iop.NewPolynomial(&cp, iop.Form{
+		Basis: iop.Canonical, Layout: iop.Regular})
+
+	return *vanishingPoly
+}
+
 // Take a domain L_0 = o * <w> and compute a new domain L_1 = w * o^power * <w^power>.
 // TODO verify correctness
 func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
@@ -492,6 +557,7 @@ func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
 	d := fft.NewDomain(uint64(newSize), fft.WithShift(offset))
 	return d
 }
+
 // Takes the underlying backing_domain = <w>, and computes the new domain
 // <w^power> (note this will have size |L| / power)
 // TODO verify correctness
