@@ -55,6 +55,7 @@ type instance struct {
 	verifierRepetitions   uint64
 	stirFoldingFactor     uint64
 	friFoldingFactor      uint64
+	oodSamples            uint64
 
 	// Merkle tree parameters
 	h hash.Hash
@@ -115,7 +116,7 @@ func main() {
 	p := buildRandomPolynomial(n)
 	prover := newInstance(n, p)
 
-	log := logger.Logger().With().Str("position", "start").Logger()
+	log := logger.Logger()
 	log.Info().Msg("Commit")
 
 	// commit()
@@ -144,6 +145,7 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 		verifierRepetitions:   1000,
 		stirFoldingFactor:     16,
 		friFoldingFactor:      8,
+		oodSamples:            2,
 	}
 
 	// build Domain
@@ -278,10 +280,6 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	}
 
 	//r := t.Root()
-
-	// OOD randomness
-	var ood fr.Element
-	ood.SetRandom()
 
 	// Sample the indexes of L^k
 
