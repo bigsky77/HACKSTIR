@@ -15,8 +15,6 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/fft"
 	"github.com/consensys/gnark-crypto/ecc/bls12-381/fr/iop"
 	fiatshamir "github.com/consensys/gnark-crypto/fiat-shamir"
-
-	"github.com/consensys/gnark/logger"
 )
 
 // CHECK Correctness
@@ -57,6 +55,7 @@ type instance struct {
 	verifierRepetitions   uint64
 	stirFoldingFactor     uint64
 	friFoldingFactor      uint64
+	oodSamples            uint64
 
 	degrees []uint64
 	numRounds uint64
@@ -116,24 +115,27 @@ type RoundProof struct {
 func main() {
 	println("=========================================")
 	println("STIR")
-
 	// degree
 	n := 32
 	p := buildRandomPolynomial(n)
 	prover := newInstance(n, p)
 
-	log := logger.Logger().With().Str("position", "start").Logger()
-	log.Info().Msg("Commit")
+	fmt.Printf("Targeting %d-bits of security - protocol running at %d-bits - soundness: Conjecture\n", prover.securityLevel, prover.protocolSecurityLevel)
+	fmt.Printf("Starting degree: 2^%d, stopping_degree: 2^%d\n", prover.initialDegree, prover.finalDegree)
+	fmt.Printf("Starting rate: 2^-%d, folding_factor: %d\n", prover.rate, prover.stirFoldingFactor)
+	fmt.Printf("Number of rounds: %d. OOD samples: %d\n", prover.nbSteps, prover.oodSamples)
+	fmt.Println("")
 
 	// commit()
+	fmt.Println("Commit")
 	witness, commitment := prover.commit(p)
 
 	// prover()
-	log.Info().Msg("Prove")
+	fmt.Println("Prove")
 	proof := prover.prove(witness)
 
 	// verifier()
-	log.Info().Msg("Verify")
+	fmt.Println("Verify")
 	verifier(commitment, proof)
 
 	println("=========================================")
@@ -151,6 +153,7 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 		verifierRepetitions:   1000,
 		stirFoldingFactor:     16,
 		friFoldingFactor:      8,
+		oodSamples:            2,
 	}
 
 	// build Domain
@@ -291,7 +294,6 @@ func (s *instance) prove(witness Witness) Proof {
 }
 
 func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, RoundProof) {
-	fmt.Println("Round", i)
 
 	// fold poly
 	var gInv fr.Element
@@ -299,10 +301,10 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 
 	// TODO confirm that this is the correct way to fold
 	_p := witness.p.Coefficients()
-	// this is incorrect need to figure out correct way to fold
 	_p = foldPolynomialLagrangeBasis(_p, gInv, witness.foldingRandomness)
 
 	// scale offset domain
+	// TODO implement
 	g := scaleWithOffset(*s.domain, 2)
 
 	// evaluate poly
@@ -395,9 +397,14 @@ func (s *instance)repetitionsFunc(logInvRate uint64) uint64 {
 func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
 	size := domain.Cardinality
 	newSize := int(size) / pow
-	//fmt.Println("size", newSize)
 
-	d := fft.NewDomain(uint64(newSize))
+	var power, offset fr.Element
+	power.SetUint64(uint64(pow))
+
+	rou := domain.Generator
+	offset.Mul(&rou, &power)
+
+	d := fft.NewDomain(uint64(newSize), fft.WithShift(offset))
 	return d
 }
 
