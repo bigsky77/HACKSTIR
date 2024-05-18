@@ -256,10 +256,10 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 
 	// TODO confirm that this is the correct way to fold
 	_p := witness.p.Coefficients()
-	// this is incorrect need to figure out correct way to fold
 	_p = foldPolynomialLagrangeBasis(_p, gInv, witness.foldingRandomness)
 
 	// scale offset domain
+	// TODO implement
 	g := scaleWithOffset(*s.domain, 2)
 
 	// evaluate poly
@@ -280,6 +280,9 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	//r := t.Root()
 
 	// OOD randomness
+	var ood fr.Element
+	ood.SetRandom()
+
 	// TODO impl fiatshamir
 
 	// Sample the indexes of L^k
@@ -307,9 +310,11 @@ func verifier(c Commitment, p Proof) {
 func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
 	size := domain.Cardinality
 	newSize := int(size) / pow
-	//fmt.Println("size", newSize)
 
-	d := fft.NewDomain(uint64(newSize))
+	var power fr.Element
+	power.SetUint64(uint64(pow))
+
+	d := fft.NewDomain(uint64(newSize), fft.WithShift(power))
 	return d
 }
 
