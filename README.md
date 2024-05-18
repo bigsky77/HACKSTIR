@@ -4,6 +4,19 @@ Gnark implementation of the STIR protocol(https://eprint.iacr.org/2024/390).  ST
 
 ## Set-up
 
+Run using the following command.
+
+```
+go run src/main.go
+```
+
 ## Benchmarks
 
 ## Status
+
+
+[X] Commit
+
+[ ] Prove
+
+[ ] Verify
