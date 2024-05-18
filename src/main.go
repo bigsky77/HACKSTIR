@@ -288,8 +288,40 @@ func (s *instance) prove(witness Witness) Proof {
 		roundProofs[i] = roundProof
 		WitnessExtended = newWitness
 	}
+	//let final_polynomial = poly_utils::folding::poly_fold(
+	//	&witness.polynomial,
+	//	self.parameters.folding_factor,
+	//	witness.folding_randomness,
+	//);
+	_finalPoly := WitnessExtended.p.Coefficients()
+	_finalPoly = foldPolynomialLagrangeBasis(_finalPoly, s.domain.GeneratorInv, WitnessExtended.foldingRandomness)
+	finalPoly := iop.NewPolynomial(&_finalPoly, iop.Form{
+		Basis: iop.Canonical, Layout: iop.Regular})
 
-	p := Proof{}
+	//let final_repetitions = self.parameters.repetitions[self.parameters.num_rounds];
+	finalRepetitions := s.repetitions[WitnessExtended.numRounds]
+
+	//let scaling_factor = witness.domain.size() / self.parameters.folding_factor;
+	scalingFactor := witness.domain.Cardinality / s.stirFoldingFactor
+
+	//let final_randomness_indexes = utils::dedup(
+	//	(0..final_repetitions).map(|_| utils::squeeze_integer(&mut sponge, scaling_factor)),
+	//);
+	finalRandomnessIndexes := make([]uint64, finalRepetitions)
+	for i := uint64(0); i < finalRepetitions; i++ {
+		finalRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
+	}
+
+	var queries_to_final []fr.Element
+
+	var pow_nonce int
+
+	p := Proof{
+		roundProofs,
+		queries_to_final,
+		*finalPoly,
+		pow_nonce,
+	}
 
 	return p
 }
