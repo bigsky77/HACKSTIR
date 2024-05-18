@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"hash"
+	"math"
+	"math/rand"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
 	"github.com/consensys/gnark-crypto/ecc"
@@ -54,6 +56,11 @@ type instance struct {
 	stirFoldingFactor     uint64
 	friFoldingFactor      uint64
 	oodSamples            uint64
+
+	degrees []uint64
+	numRounds uint64
+	repetitions []uint64
+	rates []uint64
 
 	// Merkle tree parameters
 	h hash.Hash
@@ -165,6 +172,42 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 
 	// hash
 	s.h = sha256.New()
+
+	d := s.initialDegree
+	s.numRounds = 0
+	for d > s.finalDegree {
+		if d % s.stirFoldingFactor != 0 {
+			panic(fmt.Sprintf("assertion failed: %d is not divisible by %d", d, s.stirFoldingFactor))
+		}
+		d /= s.stirFoldingFactor
+		s.degrees = append(s.degrees, d)
+		s.numRounds++
+	}
+
+	s.numRounds -= 1;
+    s.degrees = s.degrees[:len(s.degrees)-1]
+
+	s.rates = []uint64{s.rate}
+
+	logFolding := uint64(math.Log(float64(s.stirFoldingFactor)) / math.Log(2))
+
+	for i := uint64(0); i < s.numRounds+uint64(1); i++ {
+		newRate := s.rate + i * (logFolding - 1)
+		s.rates = append(s.rates, newRate)
+	}
+
+	// TODO do pow realted stuff if we have time
+
+	for _, logInvRate := range s.rates {
+		s.repetitions = append(s.repetitions, s.repetitionsFunc(logInvRate))
+	}
+
+	for i := uint64(0); i < s.numRounds; i++ {
+		// Update repetitions at index i with the minimum value between repetitions[i] and degrees[i] divided by parameters.foldingFactor
+		if s.degrees[i]/s.stirFoldingFactor < s.repetitions[i] {
+			s.repetitions[i] = s.degrees[i] / s.stirFoldingFactor
+		}
+	}
 
 	return &s
 }
@@ -279,9 +322,52 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 		}
 	}
 
-	//r := t.Root()
+	// TODO uncommented because declared not used error
+	// r := t.Root()
 
+	// OOD randomness
+	// TODO impl fiatshamir
+	// TODO make the number of ood samples dynamic, we use 2 hardcoded here
+	// Since the field is way larger than the domain the samples will be out of domain w.h.p.
+	oodRandomness := make([]fr.Element, 2)
+	oodRandomness[0].SetRandom()
+	oodRandomness[1].SetRandom()
+
+	poly := iop.NewPolynomial(&_p, iop.Form{
+		Basis: iop.Canonical, Layout: iop.Regular})
+	// evaluation of poly at the ood randomness
+	betas := make([]fr.Element, 2)
+	for i := 0; i < 2; i++ {
+		betas[i] = poly.Evaluate(oodRandomness[i])
+	}
+
+	// TODO check if we can pick random elements instead of using sponge
+
+	// Proximity generator
+	// TODO not safe because random numbers are not from fiatshamir
+	var combRandomness fr.Element
+	combRandomness.SetRandom()
+
+	// Folding randomness for next round
+	var foldingRandomness fr.Element
+	foldingRandomness.SetRandom()
+	
 	// Sample the indexes of L^k
+	// Sample the indexes of L^k that we are going to use for querying the previous Merkle tree
+	// let scaling_factor = witness.domain.size() / self.parameters.folding_factor;
+	// let num_repetitions = self.parameters.repetitions[witness.num_round];
+	// let stir_randomness_indexes = utils::dedup(
+	// 	(0..num_repetitions).map(|_| utils::squeeze_integer(sponge, scaling_factor)),
+	// );
+
+	scalingFactor := witness.domain.Cardinality / s.stirFoldingFactor
+	numRepetitions := s.repetitions[witness.numRounds]
+
+	stirRandomnessIndexes := make([]uint64, numRepetitions)
+	for i := uint64(0); i < numRepetitions; i++ {
+		stirRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
+	}
+
 
 	// Verifier quires
 
@@ -296,6 +382,11 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 }
 
 func verifier(c Commitment, p Proof) {
+}
+
+func (s *instance)repetitionsFunc(logInvRate uint64) uint64 {
+    constant := 2
+    return uint64(math.Ceil(float64(constant*int(s.protocolSecurityLevel)) / float64(logInvRate)))
 }
 
 ////////////////////////////////////////
