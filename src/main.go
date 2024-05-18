@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"hash"
 	"math"
+	"math/big"
 	"math/rand"
 
 	"github.com/consensys/gnark-crypto/accumulator/merkletree"
@@ -354,11 +355,6 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	
 	// Sample the indexes of L^k
 	// Sample the indexes of L^k that we are going to use for querying the previous Merkle tree
-	// let scaling_factor = witness.domain.size() / self.parameters.folding_factor;
-	// let num_repetitions = self.parameters.repetitions[witness.num_round];
-	// let stir_randomness_indexes = utils::dedup(
-	// 	(0..num_repetitions).map(|_| utils::squeeze_integer(sponge, scaling_factor)),
-	// );
 
 	scalingFactor := witness.domain.Cardinality / s.stirFoldingFactor
 	numRepetitions := s.repetitions[witness.numRounds]
@@ -368,6 +364,20 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 		stirRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
 	}
 
+	// Here, we update the witness
+    // First, compute the set of points we are actually going to query at
+	var stirRandomness []fr.Element
+	for _, index := range(stirRandomnessIndexes) {
+		scaledDomain := scale(witness.domain, int(s.stirFoldingFactor))
+		var element fr.Element
+		element = *element.Exp(scaledDomain.Generator, big.NewInt(int64(index)))
+		// TODO if the offset is not one (identity) we have to multiply the element by the coset offset
+		// This is probably incorrect idk
+		if !scaledDomain.FrMultiplicativeGen.IsOne(){
+			element.Mul(&element, &(scaledDomain.FrMultiplicativeGen))
+		}
+		stirRandomness = append(stirRandomness, element)
+	}
 
 	// Verifier quires
 
@@ -405,6 +415,19 @@ func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
 	offset.Mul(&rou, &power)
 
 	d := fft.NewDomain(uint64(newSize), fft.WithShift(offset))
+	return d
+}
+// Takes the underlying backing_domain = <w>, and computes the new domain
+// <w^power> (note this will have size |L| / power)
+// TODO verify correctness
+func scale(domain fft.Domain, pow int) *fft.Domain {
+	size := domain.Cardinality
+	newSize := int(size) / pow
+
+	var power fr.Element
+	power.SetUint64(uint64(pow))
+
+	d := fft.NewDomain(uint64(newSize))
 	return d
 }
 
