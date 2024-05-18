@@ -70,6 +70,10 @@ type instance struct {
 	fs  *fiatshamir.Transcript
 	xis []string
 }
+type QueryToFinal struct {
+	queriesToFinalAns   [][]fr.Element
+	queriesToFinalProof []fri.OpeningProof
+}
 
 // represents a Witness
 type Witness struct {
@@ -98,7 +102,7 @@ type Commitment struct {
 // represents a Proof
 type Proof struct {
 	RoundProofs    []RoundProof
-	queriesToFinal []fri.OpeningProof
+	queriesToFinal QueryToFinal
 	finalPoly      iop.Polynomial
 	powNonce       int
 }
@@ -333,6 +337,10 @@ func (s *instance) prove(witness Witness) Proof {
 		_, res.ProofSet, _, _ = tree.Prove()
 		queriesToFinalProof[j] = res
 	}
+	var queriesToFinal QueryToFinal
+	//let queries_to_final = (queries_to_final_ans, queries_to_final_proof);
+	queriesToFinal.queriesToFinalAns = queriesToFinalAns
+	queriesToFinal.queriesToFinalProof = queriesToFinalProof
 
 	//TODO
 
@@ -340,7 +348,7 @@ func (s *instance) prove(witness Witness) Proof {
 
 	p := Proof{
 		roundProofs,
-		queriesToFinalProof,
+		queriesToFinal,
 		*finalPoly,
 		pow_nonce,
 	}
