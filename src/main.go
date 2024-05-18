@@ -57,10 +57,10 @@ type instance struct {
 	friFoldingFactor      uint64
 	oodSamples            uint64
 
-	degrees []uint64
-	numRounds uint64
+	degrees     []uint64
+	numRounds   uint64
 	repetitions []uint64
-	rates []uint64
+	rates       []uint64
 
 	// Merkle tree parameters
 	h hash.Hash
@@ -176,7 +176,7 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 	d := s.initialDegree
 	s.numRounds = 0
 	for d > s.finalDegree {
-		if d % s.stirFoldingFactor != 0 {
+		if d%s.stirFoldingFactor != 0 {
 			panic(fmt.Sprintf("assertion failed: %d is not divisible by %d", d, s.stirFoldingFactor))
 		}
 		d /= s.stirFoldingFactor
@@ -184,15 +184,15 @@ func newInstance(n int, p *iop.Polynomial) *instance {
 		s.numRounds++
 	}
 
-	s.numRounds -= 1;
-    s.degrees = s.degrees[:len(s.degrees)-1]
+	s.numRounds -= 1
+	s.degrees = s.degrees[:len(s.degrees)-1]
 
 	s.rates = []uint64{s.rate}
 
 	logFolding := uint64(math.Log(float64(s.stirFoldingFactor)) / math.Log(2))
 
 	for i := uint64(0); i < s.numRounds+uint64(1); i++ {
-		newRate := s.rate + i * (logFolding - 1)
+		newRate := s.rate + i*(logFolding-1)
 		s.rates = append(s.rates, newRate)
 	}
 
@@ -351,7 +351,7 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	// Folding randomness for next round
 	var foldingRandomness fr.Element
 	foldingRandomness.SetRandom()
-	
+
 	// Sample the indexes of L^k
 	// Sample the indexes of L^k that we are going to use for querying the previous Merkle tree
 	// let scaling_factor = witness.domain.size() / self.parameters.folding_factor;
@@ -368,7 +368,6 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 		stirRandomnessIndexes[i] = uint64(rand.Int63n(int64(scalingFactor)))
 	}
 
-
 	// Verifier quires
 
 	// Update the witness
@@ -384,9 +383,9 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 func verifier(c Commitment, p Proof) {
 }
 
-func (s *instance)repetitionsFunc(logInvRate uint64) uint64 {
-    constant := 2
-    return uint64(math.Ceil(float64(constant*int(s.protocolSecurityLevel)) / float64(logInvRate)))
+func (s *instance) repetitionsFunc(logInvRate uint64) uint64 {
+	constant := 2
+	return uint64(math.Ceil(float64(constant*int(s.protocolSecurityLevel)) / float64(logInvRate)))
 }
 
 ////////////////////////////////////////
