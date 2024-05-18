@@ -277,10 +277,24 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 		}
 	}
 
-	//r := t.Root()
+	// TODO uncommented because declared not used error
+	// r := t.Root()
 
 	// OOD randomness
 	// TODO impl fiatshamir
+	// TODO make the number of ood samples dynamic, we use 2 hardcoded here
+	// Since the field is way larger than the domain the samples will be out of domain w.h.p.
+	oodRandomness := make([]fr.Element, 2)
+	oodRandomness[0].SetRandom()
+	oodRandomness[1].SetRandom()
+
+	poly := iop.NewPolynomial(&_p, iop.Form{
+		Basis: iop.Canonical, Layout: iop.Regular})
+	betas := make([]fr.Element, 2)
+	for i := 0; i < 2; i++ {
+		betas[i] = poly.Evaluate(oodRandomness[i])
+	}
+
 
 	// Sample the indexes of L^k
 
