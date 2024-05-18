@@ -379,6 +379,11 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 		stirRandomness = append(stirRandomness, element)
 	}
 
+	// Then compute the set we are quotienting by
+	quotientSet := make([]fr.Element, 0, len(oodRandomness) + len(stirRandomness))
+	quotientSet = append(quotientSet, oodRandomness...)
+	quotientSet = append(quotientSet, stirRandomness...)
+
 	// Verifier quires
 
 	// Update the witness
