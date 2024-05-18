@@ -283,8 +283,6 @@ func (s *instance) round(witness WitnessExtended, i int) (WitnessExtended, Round
 	var ood fr.Element
 	ood.SetRandom()
 
-	// TODO impl fiatshamir
-
 	// Sample the indexes of L^k
 
 	// Verifier quires
@@ -311,10 +309,13 @@ func scaleWithOffset(domain fft.Domain, pow int) *fft.Domain {
 	size := domain.Cardinality
 	newSize := int(size) / pow
 
-	var power fr.Element
+	var power, offset fr.Element
 	power.SetUint64(uint64(pow))
 
-	d := fft.NewDomain(uint64(newSize), fft.WithShift(power))
+	rou := domain.Generator
+	offset.Mul(&rou, &power)
+
+	d := fft.NewDomain(uint64(newSize), fft.WithShift(offset))
 	return d
 }
 
